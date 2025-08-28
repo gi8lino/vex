@@ -1,0 +1,3 @@
+this is a ${VAR///} testfile.
+
+blub $VAR unset

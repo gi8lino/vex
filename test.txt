@@ -1,0 +1,9 @@
+this is a ${VAR///} testfile.
+
+empty var: ${} and $.
+
+blub $VIAR unset and ${VIAR}.
+blub $VAR_EMPTY unset and ${VAR_EMPTY}.
+
+special ${VAR_NOT_FOUND?custom error message}.
+
