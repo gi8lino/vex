@@ -3,7 +3,6 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/gi8lino/vex?style=flat-square)](https://goreportcard.com/report/github.com/gi8lino/vex)
 [![Go Doc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square)](https://godoc.org/github.com/gi8lino/vex)
 [![Release](https://img.shields.io/github/release/gi8lino/vex.svg?style=flat-square)](https://github.com/gi8lino/vex/releases/latest)
-[![GitHub tag](https://img.shields.io/github/tag/gi8lino/vex.svg?style=flat-square)](https://github.com/gi8lino/vex/releases/latest)
 ![Tests](https://github.com/gi8lino/vex/actions/workflows/tests.yml/badge.svg)
 [![Build](https://github.com/gi8lino/vex/actions/workflows/release.yml/badge.svg)](https://github.com/gi8lino/vex/actions/workflows/release.yml)
 [![license](https://img.shields.io/github/license/gi8lino/vex.svg?style=flat-square)](LICENSE)
