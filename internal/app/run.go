@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 
 	"github.com/gi8lino/vex/internal/flag"
 	"github.com/gi8lino/vex/internal/formatter"
@@ -15,19 +13,23 @@ import (
 	"github.com/containeroo/tinyflags"
 )
 
-// Run parses flags, wires IO, dispatches processing and returns exit code + error.
+const ioBufSize = 1 << 20 // 1 MiB
+
+// Run parses flags, wires IO, dispatches processing and returns error.
 func Run(
 	version, commit string,
 	args []string,
-	stdout io.Writer,
-	stdin io.Reader,
+	out io.Writer,
+	in io.Reader,
 	lookupEnv func(string) (string, bool),
 	setEnv func(string, string) error,
 ) error {
 	flags, err := flag.ParseFlags(args, version, commit)
 	if err != nil {
+		// Help/version are represented as errors by tinyflags.
 		if tinyflags.IsHelpRequested(err) || tinyflags.IsVersionRequested(err) {
-			fmt.Fprintln(stdout, err) // nolint:errcheck
+			// Print directly to the provided writer (unbuffered).
+			_, _ = fmt.Fprintln(out, err)
 			return nil
 		}
 		return err
@@ -41,44 +43,44 @@ func Run(
 		}
 	}
 
-	pr := processor.Processor{
-		Opts:      flags,
-		Stdout:    bufio.NewWriterSize(stdout, 1<<20),
-		Stdin:     bufio.NewReaderSize(stdin, 1<<20),
-		Lookup:    lookupEnv,
-		Setenv:    setEnv,
-		Formatter: formatter.NewFormatter(flags.Colored),
-	}
+	// Instantiate processor.
+	pr := processor.NewProcessor(
+		flags,
+		lookupEnv,
+		setEnv,
+		formatter.NewFormatter(flags.Colored),
+		ioBufSize,
+	)
 
+	// Prepare buffered writer once; only used in code paths that write to stdout.
+	bw := bufio.NewWriterSize(out, ioBufSize)
+
+	// No positional args: stream stdin -> stdout.
 	if len(flags.Positional) == 0 {
-		// stdin -> stdout
-		if err := pr.ProcessStream("<stdin>", pr.Stdin, pr.Stdout); err != nil {
+		br := bufio.NewReaderSize(in, ioBufSize)
+		if err := pr.ProcessStdin(br, bw); err != nil {
 			return err
 		}
-		return nil
+		return bw.Flush()
 	}
 
+	// In-place editing for positional files.
 	if flags.InPlace {
 		for _, p := range flags.Positional {
-			if err := pr.ProcessInPlace(p); err != nil {
+			if err := pr.ProcessInPlace(p, ioBufSize); err != nil {
 				return err
 			}
 		}
+		// Nothing buffered to flush in this branch (writes go to files).
 		return nil
 	}
 
-	// concatenate files to stdout in order
-	for _, p := range flags.Positional {
-		f, err := os.Open(p)
-		if err != nil {
-			return err
-		}
-		br := bufio.NewReaderSize(f, 1<<20)
-		if err := pr.ProcessStream(filepath.Base(p), br, pr.Stdout); err != nil {
-			_ = f.Close()
-			return err
-		}
-		f.Close() // nolint:errcheck
+	// Positional files -> stdout (concatenate in order).
+	if err := pr.ProcessFiles(flags.Positional, bw, ioBufSize); err != nil {
+		return err
 	}
+
+	bw.Flush() // nolint:errcheck
+
 	return nil
 }

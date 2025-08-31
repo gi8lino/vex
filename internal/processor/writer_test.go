@@ -35,36 +35,38 @@ func TestProcessInPlace(t *testing.T) {
 		require.NoError(t, os.Chtimes(path, oldTime, oldTime))
 
 		// Prepare processor that will expand ${NAME} -> Ada and make a backup.
-		p := &Processor{
-			Formatter: formatter.NewFormatter(false),
-			Opts: flag.Options{
+		p := NewProcessor(
+			flag.Options{
 				BackupExt: ".bak",
 				Colored:   false,
 			},
-			Lookup: func(name string) (string, bool) {
+			func(name string) (string, bool) {
 				if name == "NAME" {
 					return "Ada", true
 				}
 				return "", false
 			},
-		}
+			nil,
+			formatter.NewFormatter(false),
+			testBufSize,
+		)
 
-		require.NoError(t, p.ProcessInPlace(path))
+		require.NoError(t, p.ProcessInPlace(path, testBufSize))
 
-		// 1) Original file now contains expanded content.
+		// Original file now contains expanded content.
 		got, err := os.ReadFile(path)
 		require.NoError(t, err)
 		assert.Equal(t, "hello Ada", string(got))
 
-		// 2) Mode preserved.
+		// Mode preserved.
 		info, err := os.Stat(path)
 		require.NoError(t, err)
 		assert.Equal(t, origMode, info.Mode().Perm())
 
-		// 3) ModTime preserved (equal to the original).
+		// ModTime preserved (equal to the original).
 		assert.True(t, info.ModTime().Equal(oldTime), "modtime should be preserved")
 
-		// 4) Backup exists and contains the *original* content.
+		// Backup exists and contains the *original* content.
 		bak := path + ".bak"
 		bs, err := os.ReadFile(bak)
 		require.NoError(t, err)
@@ -82,18 +84,20 @@ func TestProcessInPlace(t *testing.T) {
 		bak := path + ".bak"
 		require.NoError(t, os.WriteFile(bak, []byte("OLD BACKUP"), 0o600))
 
-		p := &Processor{
-			Formatter: formatter.NewFormatter(false),
-			Opts: flag.Options{
+		p := NewProcessor(
+			flag.Options{
 				BackupExt: ".bak",
 				Colored:   false,
 			},
-			Lookup: func(name string) (string, bool) {
+			func(name string) (string, bool) {
 				return "Ada", true
 			},
-		}
+			nil,
+			formatter.NewFormatter(false),
+			testBufSize,
+		)
 
-		require.NoError(t, p.ProcessInPlace(path))
+		require.NoError(t, p.ProcessInPlace(path, testBufSize))
 
 		// Backup should now reflect the original pre-processed content ("${NAME}")
 		bs, err := os.ReadFile(bak)
@@ -108,16 +112,18 @@ func TestProcessInPlace(t *testing.T) {
 		path := filepath.Join(dir, "file.txt")
 		require.NoError(t, os.WriteFile(path, []byte("${VAR?boom}"), 0o600))
 
-		p := &Processor{
-			Formatter: formatter.NewFormatter(false),
-			Opts:      flag.Options{Colored: false},
-			Lookup: func(name string) (string, bool) {
+		p := NewProcessor(
+			flag.Options{Colored: false},
+			func(name string) (string, bool) {
 				// unset -> triggers error
 				return "", false
 			},
-		}
+			nil,
+			formatter.NewFormatter(false),
+			testBufSize,
+		)
 
-		err := p.ProcessInPlace(path)
+		err := p.ProcessInPlace(path, testBufSize)
 		require.Error(t, err)
 		assert.EqualError(t, err, "VAR: boom")
 
@@ -131,23 +137,26 @@ func TestProcessInPlace(t *testing.T) {
 		}
 	})
 
-	t.Run("Open errors are wrapped as IO", func(t *testing.T) {
+	t.Run("Open errors are surfaced as I/O errors", func(t *testing.T) {
 		t.Parallel()
 
 		dir := t.TempDir()
 		nonexistent := filepath.Join(dir, "does not exist.txt")
 
-		p := &Processor{
-			Formatter: formatter.NewFormatter(false),
-			Opts:      flag.Options{},
-		}
+		p := NewProcessor(
+			flag.Options{},
+			nil,
+			nil,
+			formatter.NewFormatter(false),
+			testBufSize,
+		)
 
-		err := p.ProcessInPlace(nonexistent)
+		err := p.ProcessInPlace(nonexistent, testBufSize)
 		require.Error(t, err)
 		assert.EqualError(t, err, "open "+nonexistent+": no such file or directory")
 	})
 
-	t.Run("Is used by ProcessInPlace", func(t *testing.T) {
+	t.Run("Setenv hook is used during in-place processing", func(t *testing.T) {
 		t.Parallel()
 
 		// Indirect verification: process a file that uses assignment.
@@ -159,20 +168,21 @@ func TestProcessInPlace(t *testing.T) {
 		var calls int
 		var gotName, gotVal string
 
-		p := &Processor{
-			Formatter: formatter.NewFormatter(false),
-			Opts:      flag.Options{},
-			Lookup: func(name string) (string, bool) {
+		p := NewProcessor(
+			flag.Options{},
+			func(name string) (string, bool) {
 				return "", false // unset to trigger :=
 			},
-			Setenv: func(name, val string) error {
+			func(name, val string) error {
 				calls++
 				gotName, gotVal = name, val
 				return nil
 			},
-		}
+			formatter.NewFormatter(false),
+			testBufSize,
+		)
 
-		require.NoError(t, p.ProcessInPlace(path))
+		require.NoError(t, p.ProcessInPlace(path, testBufSize))
 
 		out, err := os.ReadFile(path)
 		require.NoError(t, err)
@@ -181,34 +191,28 @@ func TestProcessInPlace(t *testing.T) {
 		assert.Equal(t, "NEW", gotName)
 		assert.Equal(t, "value", gotVal)
 	})
-	t.Run("Backup copy fallback when link fails", func(t *testing.T) {
+
+	t.Run("Backup is created (link or copy) and contains original", func(t *testing.T) {
 		t.Parallel()
 
-		// This test exercises the fallback path indirectly:
-		// We can't reliably force os.Link to fail across platforms, so we simulate
-		// by creating the backup as a directory (so Link will fail) and ensuring
-		// ProcessInPlace still leaves a readable backup (copy fallback).
-		// If creating a directory with the backup name fails, we skip.
+		// Cross-platform validation that regardless of whether hard-linking
+		// is supported, a backup file ends up with the *original* contents.
 		dir := t.TempDir()
 		path := filepath.Join(dir, "file.txt")
-		require.NoError(t, os.WriteFile(path, []byte("X=${X:-x}"), 0o600))
+		orig := "X=${X:-x}"
+		require.NoError(t, os.WriteFile(path, []byte(orig), 0o600))
+
+		p := NewProcessor(
+			flag.Options{BackupExt: ".bak"},
+			func(name string) (string, bool) { return "y", true },
+			nil,
+			formatter.NewFormatter(false),
+			testBufSize,
+		)
+
+		require.NoError(t, p.ProcessInPlace(path, testBufSize))
 
 		bak := path + ".bak"
-		// Create a directory where the backup file should go; os.Link will fail with EEXIST or EPERM.
-		require.NoError(t, os.Mkdir(bak, 0o700))
-
-		p := &Processor{
-			Formatter: formatter.NewFormatter(false),
-			Opts: flag.Options{
-				BackupExt: ".bak",
-			},
-			Lookup: func(name string) (string, bool) { return "y", true },
-		}
-
-		// Even if linking fails, fallback copy should succeed by removing and re-creating.
-		require.NoError(t, p.ProcessInPlace(path))
-
-		// Backup should now be a file, not a directory (the code removes old backup before creating).
 		info, err := os.Stat(bak)
 		require.NoError(t, err)
 		assert.False(t, info.IsDir())
@@ -216,7 +220,7 @@ func TestProcessInPlace(t *testing.T) {
 		// And it should contain the *original* content prior to processing.
 		bs, err := os.ReadFile(bak)
 		require.NoError(t, err)
-		assert.Equal(t, "X=${X:-x}", string(bs))
+		assert.Equal(t, orig, string(bs))
 	})
 }
 

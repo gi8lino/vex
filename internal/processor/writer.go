@@ -10,9 +10,7 @@ import (
 )
 
 // ProcessInPlace performs safe in-place substitution on a file.
-// It writes to a temp file, flushes, fsyncs, and atomically renames,
-// preserving permissions and modtime. Backup creation is best-effort.
-func (p *Processor) ProcessInPlace(path string) error {
+func (p *Processor) ProcessInPlace(path string, ioBufSize int) error {
 	src, err := os.Open(path)
 	if err != nil {
 		return err
@@ -27,6 +25,7 @@ func (p *Processor) ProcessInPlace(path string) error {
 	// create a temporary file in same dir
 	dir := filepath.Dir(path)
 	base := filepath.Base(path)
+
 	tmp, err := os.CreateTemp(dir, "."+base+".vex-*")
 	if err != nil {
 		return err
@@ -42,12 +41,11 @@ func (p *Processor) ProcessInPlace(path string) error {
 	}
 
 	// stream process src → tmp
-	bw := bufio.NewWriterSize(tmp, 1<<20)
+	bw := bufio.NewWriterSize(tmp, ioBufSize)
 
-	// ProcessStream internally flushes the writer; we don't need to flush bw again here.
 	if err := p.ProcessStream(path, src, bw); err != nil {
 		cleanup()
-		return err // may be Subst or IO depending on source
+		return err
 	}
 
 	// Ensure data hits disk before rename
@@ -62,12 +60,11 @@ func (p *Processor) ProcessInPlace(path string) error {
 	}
 
 	// create backup if requested (best-effort)
-	if ext := p.Opts.BackupExt; ext != "" {
+	if ext := p.opts.BackupExt; ext != "" {
 		bak := path + ext
 		_ = os.Remove(bak) // remove old backup
 		if err := os.Link(path, bak); err != nil {
-			// hard link failed, fallback to copy (ignore error: best-effort)
-			_ = copyFile(path, bak, st.Mode())
+			_ = copyFile(path, bak, st.Mode()) // fallback to copy (ignore error)
 		}
 	}
 
@@ -106,8 +103,5 @@ func copyFile(src, dst string, mode os.FileMode) error {
 	}
 	defer d.Close() // nolint:errcheck
 	_, err = io.Copy(d, s)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
