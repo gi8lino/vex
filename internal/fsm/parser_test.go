@@ -18,7 +18,7 @@ func runFSM(t *testing.T, e *Engine, in string) (string, error) {
 	var out bytes.Buffer
 	w := bufio.NewWriter(&out)
 	err := e.Consume(strings.NewReader(in), w)
-	w.Flush() // nolint:errcheck
+	_ = w.Flush()
 	return out.String(), err
 }
 

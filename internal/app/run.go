@@ -80,7 +80,7 @@ func Run(
 		return err
 	}
 
-	bw.Flush() // nolint:errcheck
+	_ = bw.Flush()
 
 	return nil
 }
