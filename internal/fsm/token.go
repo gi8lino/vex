@@ -70,6 +70,7 @@ func (t *Tokenizer) Next() (Token, error) {
 	b, err := t.br.ReadByte()
 	switch {
 	case err == nil:
+		// Note: this is a hot path; avoid allocating a string for single-char tokens.
 	case errors.Is(err, io.EOF):
 		return Token{Type: TOK_EOF}, nil
 	default:
