@@ -21,7 +21,7 @@ RENVSUBST     = $(LOCALBIN)/renvsubst
 
 ## Tool Versions
 # renovate: datasource=github-releases depName=golangci/golangci-lint
-GOLANGCI_LINT_VERSION ?= v2.6.2
+GOLANGCI_LINT_VERSION ?= v2.7.1
 # renovate: datasource=github-releases depName=containeroo/renvsubst
 RENVSUBST_VERSION ?= v0.10.0
 
