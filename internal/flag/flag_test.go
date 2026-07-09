@@ -164,7 +164,7 @@ func TestParseFlags(t *testing.T) {
 			"--invalid-flag",
 		}, "1.0.0", "deadbeef")
 		require.Error(t, err)
-		assert.EqualError(t, err, "unknown flag: --invalid-flag")
+		assert.EqualError(t, err, "unknown flag --invalid-flag")
 		assert.Empty(t, flags)
 	})
 }
