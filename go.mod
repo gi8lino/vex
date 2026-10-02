@@ -3,7 +3,7 @@ module github.com/gi8lino/vex
 go 1.25.0
 
 require (
-	github.com/containeroo/tinyflags v0.3.0
+	github.com/containeroo/tinyflags v0.4.1
 	github.com/stretchr/testify v1.12.1
 )
 
