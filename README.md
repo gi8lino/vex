@@ -91,7 +91,7 @@ vex -i --backup=.bak config.yaml
 | `--colored`            | `-c`  | Colorize output (stdout + diagnostics)                          |
 | `--strict`             | `-x`  | Equivalent to `--error-unset --error-empty`                     |
 | `--error-unset`        | `-u`  | Error if a variable is unset                                    |
-| `--error-empty`        | `-e`  | Error if a variable expands to empty                            |
+| `--error-empty`        |       | Error if a variable expands to empty                            |
 | `--keep-unset`         | `-U`  | Keep `${VAR}` literal if unset                                  |
 | `--keep-empty`         | `-E`  | Keep `${VAR}` literal if empty                                  |
 | `--keep-vars`          | `-K`  | Keep all `${VAR}` literals (implies both)                       |

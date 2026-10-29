@@ -168,3 +168,12 @@ func TestParseFlags(t *testing.T) {
 		assert.Empty(t, flags)
 	})
 }
+
+// TestExtraVarsShortcutKeepsErrorEmptyIndependent guards against duplicate -e registration.
+func TestExtraVarsShortcutKeepsErrorEmptyIndependent(t *testing.T) {
+	t.Parallel()
+	flags, err := ParseFlags([]string{"-e", "vars.env", "--error-empty"}, "test", "test")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"vars.env"}, flags.VarsFiles)
+	assert.True(t, flags.ErrorEmpty)
+}

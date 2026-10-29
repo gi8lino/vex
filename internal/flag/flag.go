@@ -80,7 +80,6 @@ func ParseFlags(args []string, version, commit string) (Options, error) {
 		Short("u").
 		Value()
 	fs.BoolVar(&out.ErrorEmpty, "error-empty", false, "error if a substitution resolves to empty").
-		Short("e").
 		Value()
 
 	// Replacement policy
